@@ -1,0 +1,224 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum Role {
+  ADMIN
+  HR_MANAGER
+  MANAGER
+  STAFF
+}
+
+enum UserStatus {
+  ACTIVE
+  INACTIVE
+  PROBATION
+  TERMINATED
+}
+
+enum AttendanceStatus {
+  PRESENT
+  ABSENT
+  HALF_DAY
+  ON_LEAVE
+}
+
+enum LeaveType {
+  CASUAL
+  SICK
+  PAID
+  UNPAID
+}
+
+enum LeaveStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
+enum PayrollStatus {
+  DRAFT
+  PROCESSED
+  PAID
+}
+
+model User {
+  id              String         @id @default(cuid())
+  name            String
+  email           String         @unique
+  passwordHash    String
+  role            Role           @default(STAFF)
+  designation     String
+  status          UserStatus     @default(ACTIVE)
+  joinDate        DateTime       @default(now())
+  avatarUrl       String?
+
+  // Department relationship
+  departmentId    String?
+  department      Department?    @relation("DepartmentMembers", fields: [departmentId], references: [id], onDelete: SetNull)
+
+  // Manager relationship (direct reporting hierarchy)
+  managerId       String?
+  manager         User?          @relation("ManagerReports", fields: [managerId], references: [id], onDelete: SetNull)
+  directReports   User[]         @relation("ManagerReports")
+
+  // Departments this user manages
+  managedDepts    Department[]   @relation("DepartmentHead")
+
+  // Related models
+  attendances     Attendance[]
+  leaveRequests   LeaveRequest[] @relation("UserLeaveRequests")
+  approvedLeaves  LeaveRequest[] @relation("ApprovedLeaves")
+  salaryStructure SalaryStructure?
+  payslips        Payslip[]
+  processedRuns   PayrollRun[]   @relation("ProcessedPayrollRuns")
+
+  createdAt       DateTime       @default(now())
+  updatedAt       DateTime       @updatedAt
+
+  @@index([email])
+  @@index([role])
+  @@index([departmentId])
+  @@index([managerId])
+}
+
+model Department {
+  id          String    @id @default(cuid())
+  name        String    @unique
+  description String?
+
+  // Department manager / head
+  managerId   String?
+  manager     User?     @relation("DepartmentHead", fields: [managerId], references: [id], onDelete: SetNull)
+
+  // Members in this department
+  members     User[]    @relation("DepartmentMembers")
+
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+}
+
+model Attendance {
+  id          String           @id @default(cuid())
+  userId      String
+  user        User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  date        DateTime         @db.Date
+  checkIn     DateTime?
+  checkOut    DateTime?
+  status      AttendanceStatus @default(PRESENT)
+
+  // Optional Geolocation & device details
+  latitude    Float?
+  longitude   Float?
+  ipAddress   String?
+  notes       String?
+
+  createdAt   DateTime         @default(now())
+  updatedAt   DateTime         @updatedAt
+
+  @@unique([userId, date])
+  @@index([userId])
+  @@index([date])
+  @@index([status])
+}
+
+model LeaveRequest {
+  id           String      @id @default(cuid())
+  userId       String
+  user         User        @relation("UserLeaveRequests", fields: [userId], references: [id], onDelete: Cascade)
+  startDate    DateTime    @db.Date
+  endDate      DateTime    @db.Date
+  type         LeaveType   @default(CASUAL)
+  reason       String
+  status       LeaveStatus @default(PENDING)
+
+  // Reviewer details
+  approvedById String?
+  approvedBy   User?       @relation("ApprovedLeaves", fields: [approvedById], references: [id], onDelete: SetNull)
+  reviewNotes  String?
+  actionDate   DateTime?
+
+  createdAt    DateTime    @default(now())
+  updatedAt    DateTime    @updatedAt
+
+  @@index([userId])
+  @@index([status])
+  @@index([startDate, endDate])
+}
+
+model LeaveQuota {
+  id        String    @id @default(cuid())
+  year      Int
+  type      LeaveType
+  totalDays Int       @default(12)
+
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+
+  @@unique([year, type])
+}
+
+model SalaryStructure {
+  id            String   @id @default(cuid())
+  userId        String   @unique
+  user          User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  basic         Decimal  @db.Decimal(10, 2)
+  hra           Decimal  @db.Decimal(10, 2)
+  allowances    Decimal  @db.Decimal(10, 2)
+  deductions    Decimal  @db.Decimal(10, 2)
+  effectiveFrom DateTime @default(now())
+
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+}
+
+model PayrollRun {
+  id            String        @id @default(cuid())
+  month         Int           // 1 - 12
+  year          Int
+  status        PayrollStatus @default(DRAFT)
+  totalGross    Decimal       @default(0.00) @db.Decimal(12, 2)
+  totalNet      Decimal       @default(0.00) @db.Decimal(12, 2)
+
+  processedById String?
+  processedBy   User?         @relation("ProcessedPayrollRuns", fields: [processedById], references: [id], onDelete: SetNull)
+  processedAt   DateTime?
+
+  payslips      Payslip[]
+
+  createdAt     DateTime      @default(now())
+  updatedAt     DateTime      @updatedAt
+
+  @@unique([month, year])
+}
+
+model Payslip {
+  id               String     @id @default(cuid())
+  payrollRunId     String
+  payrollRun       PayrollRun @relation(fields: [payrollRunId], references: [id], onDelete: Cascade)
+  userId           String
+  user             User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  basic            Decimal    @db.Decimal(10, 2)
+  hra              Decimal    @db.Decimal(10, 2)
+  allowances       Decimal    @db.Decimal(10, 2)
+  deductions       Decimal    @db.Decimal(10, 2)
+  grossPay         Decimal    @db.Decimal(10, 2)
+  netPay           Decimal    @db.Decimal(10, 2)
+
+  presentDays      Int
+  totalWorkingDays Int
+
+  pdfUrl           String?
+
+  createdAt        DateTime   @default(now())
+  updatedAt        DateTime   @updatedAt
+
+  @@unique([payrollRunId, userId])
+  @@index([userId])
+}
