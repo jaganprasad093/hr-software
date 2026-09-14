@@ -33,7 +33,8 @@ export const authOptions: NextAuthOptions = {
           user = await prisma.user.findUnique({
             where: { email },
           });
-        } catch (dbError) {
+        }
+        catch (dbError) {
           console.warn("[Auth] Database not reachable, checking demo seed credentials fallback.");
         }
 
