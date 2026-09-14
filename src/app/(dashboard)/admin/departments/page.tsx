@@ -19,6 +19,8 @@ import {
   CheckCircle2,
   Calendar,
   Search,
+  Trash2,
+  AlertTriangle,
 } from "lucide-react";
 import { toast } from "sonner";
 import { MOCK_DEPARTMENTS, MOCK_USERS, MockDepartment, MockUser } from "@/lib/mock-data";
@@ -31,6 +33,9 @@ export default function AdminDepartmentsPage() {
 
   // Selected department for viewing details & members
   const [selectedDept, setSelectedDept] = useState<MockDepartment | null>(null);
+
+  // Department selected for deletion
+  const [deptToDelete, setDeptToDelete] = useState<MockDepartment | null>(null);
 
   // Add staff modal state
   const [isAddStaffOpen, setIsAddStaffOpen] = useState(false);
@@ -193,6 +198,39 @@ export default function AdminDepartmentsPage() {
     );
 
     toast.info(`Removed ${userName} from ${selectedDept.name} (moved to Unassigned)`);
+  };
+
+  // Delete department permanently
+  const handleConfirmDelete = () => {
+    if (!deptToDelete) return;
+
+    const targetId = deptToDelete.id;
+    const targetName = deptToDelete.name;
+
+    // 1. Remove department from state
+    setDepartments((prev) => prev.filter((d) => d.id !== targetId));
+
+    // 2. Reassign members of this department to Unassigned
+    setUsers((prev) =>
+      prev.map((u) =>
+        u.departmentName === targetName
+          ? {
+              ...u,
+              departmentName: "Unassigned",
+              departmentId: "unassigned",
+            }
+          : u
+      )
+    );
+
+    // 3. If currently viewing this department in the roster modal, close it
+    if (selectedDept?.id === targetId) {
+      setSelectedDept(null);
+      setIsAddStaffOpen(false);
+    }
+
+    toast.success(`Department "${targetName}" deleted successfully.`);
+    setDeptToDelete(null);
   };
 
   const getRoleBadgeVariant = (role: Role) => {
@@ -416,7 +454,17 @@ export default function AdminDepartmentsPage() {
                   </div>
                 </div>
 
-                <div className="flex justify-end pt-1">
+                <div className="flex items-center justify-between pt-1">
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() => setDeptToDelete(dept)}
+                    className="text-xs h-8 text-rose-600 hover:text-rose-700 hover:bg-rose-50 border-rose-200 gap-1.5"
+                  >
+                    <Trash2 className="w-3.5 h-3.5" />
+                    <span>Delete</span>
+                  </Button>
+
                   <Button
                     size="sm"
                     variant="outline"
@@ -586,7 +634,16 @@ export default function AdminDepartmentsPage() {
             </div>
 
             {/* Modal Footer */}
-            <div className="p-4 border-t border-border/70 flex justify-end bg-muted/20">
+            <div className="p-4 border-t border-border/70 flex items-center justify-between bg-muted/20">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setDeptToDelete(selectedDept)}
+                className="text-xs text-rose-600 hover:text-rose-700 hover:bg-rose-50 border-rose-200 gap-1.5"
+              >
+                <Trash2 className="w-3.5 h-3.5" />
+                <span>Delete Department</span>
+              </Button>
               <Button
                 variant="outline"
                 onClick={() => {
@@ -761,6 +818,52 @@ export default function AdminDepartmentsPage() {
                 </div>
               </form>
             )}
+          </div>
+        </div>
+      )}
+
+      {/* DELETE CONFIRMATION MODAL */}
+      {deptToDelete && (
+        <div className="fixed inset-0 z-50 bg-black/75 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-card border border-border/80 rounded-3xl shadow-2xl max-w-md w-full p-6 animate-in fade-in zoom-in-95 duration-150">
+            <div className="w-12 h-12 rounded-2xl bg-rose-500/10 text-rose-600 flex items-center justify-center mb-4 border border-rose-500/20">
+              <AlertTriangle className="w-6 h-6" />
+            </div>
+
+            <h3 className="text-lg font-bold text-foreground">
+              Delete Department &quot;{deptToDelete.name}&quot;?
+            </h3>
+
+            <p className="text-xs text-muted-foreground mt-2 leading-relaxed">
+              Are you sure you want to delete this organizational department? This action will permanently remove the department from the organization directory.
+            </p>
+
+            {users.filter((u) => u.departmentName === deptToDelete.name).length > 0 && (
+              <div className="mt-3 p-3 rounded-xl bg-amber-500/10 border border-amber-500/20 text-amber-800 dark:text-amber-200 text-xs">
+                ⚠️ <strong>Notice:</strong> There are currently{" "}
+                <strong>{users.filter((u) => u.departmentName === deptToDelete.name).length} employee(s)</strong> assigned to this department. Deleting it will safely reassign them to <strong>Unassigned</strong> so their user accounts and records remain preserved.
+              </div>
+            )}
+
+            <div className="flex justify-end gap-2.5 pt-5 border-t border-border/60 mt-5">
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={() => setDeptToDelete(null)}
+              >
+                Cancel
+              </Button>
+              <Button
+                type="button"
+                size="sm"
+                onClick={handleConfirmDelete}
+                className="bg-rose-600 hover:bg-rose-700 text-white gap-1.5 shadow-sm shadow-rose-600/25"
+              >
+                <Trash2 className="w-3.5 h-3.5" />
+                Yes, Delete Department
+              </Button>
+            </div>
           </div>
         </div>
       )}
